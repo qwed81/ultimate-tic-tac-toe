@@ -90,25 +90,29 @@ impl UltimateBoard {
         self.next_to_move
     }
 
-    pub fn check_place_square(&self, board_index: usize, square_index: usize) -> Option<MoveError> {
+    pub fn validate_place_square(
+        &self,
+        board_index: usize,
+        square_index: usize,
+    ) -> Result<(), MoveError> {
         // make sure both indexes are in bounds, and the board
         // lock is being respected
         if square_index >= 9 || board_index >= 9 {
-            return Some(MoveError::SquareOutOfBounds);
+            return Err(MoveError::SquareOutOfBounds);
         }
         if board_index >= 9 {
-            return Some(MoveError::BoardOutOfBounds);
+            return Err(MoveError::BoardOutOfBounds);
         }
         if let Some(index) = self.lock_board_index {
             if board_index != index {
-                return Some(MoveError::BoardLockViolated);
+                return Err(MoveError::BoardLockViolated);
             }
         }
         if self.simple_boards[board_index].squares[square_index].is_some() {
-            return Some(MoveError::SquareAlreadyTaken);
+            return Err(MoveError::SquareAlreadyTaken);
         }
 
-        None
+        Ok(())
     }
 
     pub fn place_square(
@@ -116,9 +120,8 @@ impl UltimateBoard {
         board_index: usize,
         square_index: usize,
     ) -> Result<MoveOutcome, MoveError> {
-
         // make sure there is no errors with placing the square
-        if let Some(e) = self.check_place_square(board_index, square_index) {
+        if let Err(e) = self.validate_place_square(board_index, square_index) {
             return Err(e);
         }
 
@@ -190,25 +193,27 @@ impl UltimateBoard {
 
     fn put_small_board_row(&self, string: &mut String, board_index_start: usize) {
         for row_index in 0..3 {
-            string.push('#');
+            string.push(BORDER_CHAR);
             for board_index in board_index_start..=(board_index_start + 2) {
                 let square_index = row_index * 3;
                 let board = &self.simple_boards[board_index];
                 Self::put_char(string, board.squares[square_index]);
                 Self::put_char(string, board.squares[square_index + 1]);
                 Self::put_char(string, board.squares[square_index + 2]);
-                string.push('#');
+                string.push(BORDER_CHAR);
             }
             string.push('\n');
         }
 
         // push the bottom chars
         for _ in 0..13 {
-            string.push('#');
+            string.push(BORDER_CHAR);
         }
         string.push('\n');
     }
 }
+
+const BORDER_CHAR: char = '█';
 
 impl ToString for UltimateBoard {
     fn to_string(&self) -> String {
@@ -217,7 +222,7 @@ impl ToString for UltimateBoard {
 
         // add the starting row
         for _ in 0..13 {
-            buf.push('#');
+            buf.push(BORDER_CHAR);
         }
         buf.push('\n');
 

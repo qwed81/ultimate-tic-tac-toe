@@ -1,39 +1,5 @@
+use super::{Opponent, UltimateTTTMove};
 use crate::game::{MoveError, PlayerType, UltimateBoard};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::io::{self, BufRead, Write};
-
-#[derive(Serialize, Deserialize, Debug)]
-struct UltimateTTTMove {
-    square_index: usize,
-    board_index: usize,
-}
-
-// write objects split by the new line character
-fn to_writer<W>(mut writer: W, obj: &impl Serialize) -> io::Result<()>
-where
-    W: Write,
-{
-    let obj_json = serde_json::to_string(obj).unwrap();
-    writer.write(obj_json.as_bytes())?;
-    writer.write("\n".as_bytes())?;
-    writer.flush()?;
-
-    Ok(())
-}
-
-// split json on the new line character
-fn from_reader<R, D>(mut reader: R) -> io::Result<D>
-where
-    R: BufRead,
-    D: DeserializeOwned,
-{
-    // keep reading input until it hits a new line, that
-    // is the end of this object
-    let mut buffer = String::new();
-    reader.read_line(&mut buffer)?;
-    let obj = serde_json::from_str::<D>(&buffer)?;
-    Ok(obj)
-}
 
 fn input_usize_from_stdin() -> usize {
     let mut buffer = String::new();
@@ -104,8 +70,8 @@ fn prompt_player_move_until_success(board: &UltimateBoard) -> UltimateTTTMove {
         // try the move and see if it works before sending it.
         // If it doesn't then print out the result and re-prompt
         use MoveError as ME;
-        match board.check_place_square(board_index, square_index) {
-            Some(e) => match e {
+        match board.validate_place_square(board_index, square_index) {
+            Err(e) => match e {
                 ME::SquareAlreadyTaken => {
                     println!("square is already taken");
                 }
@@ -119,16 +85,12 @@ fn prompt_player_move_until_success(board: &UltimateBoard) -> UltimateTTTMove {
                     println!("square not in the accepted range");
                 }
             },
-            None => return ttt_move,
+            Ok(()) => return ttt_move,
         }
     }
 }
 
-pub fn start_game_loop<W, R>(mut writer: W, mut reader: R, player: PlayerType) -> io::Result<()>
-where
-    W: Write,
-    R: BufRead,
-{
+pub fn start_game_loop(opponent: &mut impl Opponent, player: PlayerType) -> Result<(), ()> {
     // create the board
     let mut board = UltimateBoard::new();
     let mut message: Option<String> = None;
@@ -150,8 +112,7 @@ where
                 .place_square(ttt_move.board_index, ttt_move.square_index)
                 .expect("invalid move not checked properly");
 
-            to_writer(&mut writer, &ttt_move)?;
-            writer.flush()?;
+            opponent.send_move(ttt_move)?;
             move_outcome
         }
         // otherwise, the other player is next to move
@@ -165,19 +126,15 @@ where
             }
 
             println!("waiting for opponent to make a move...");
+            let ttt_move = opponent.receive_move()?;
 
             // the move should be valid, if sent correctly by the other player,
             // if it is not then close the stream
-            let ttt_move: UltimateTTTMove = from_reader(&mut reader)?;
+
             let move_outcome = match board.place_square(ttt_move.board_index, ttt_move.square_index)
             {
                 Ok(move_outcome) => move_outcome,
-                Err(_) => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "The opponent's move is not valid with the current board",
-                    ))
-                }
+                Err(_) => return Err(()),
             };
 
             move_outcome
